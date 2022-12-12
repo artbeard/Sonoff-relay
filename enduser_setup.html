@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta http-equiv="content-type" content="text/html; charset=UTF-8">
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=380">
+  <title>wifi switch settings:</title>
+  <style media="screen" type="text/css">
+	*{margin:0;padding:0}
+	body{font-family: Arial, Helvetica, sans-serif;}
+	div{margin:15px auto;width:320px}
+	form{text-align:center;position:relative}
+	form fieldset{padding:20px 30px;box-sizing:border-box;border: none;}
+	form fieldset legend{font-size:15px; font-weight: 600; color:#005599;}
+	form input, form select{padding:10px;border:1px solid #ccc;margin-bottom:10px;width:100%;box-sizing:border-box;color:#2C3E50;font-size:13px}
+	form .action-button{border:0 none;cursor:pointer;}
+	form .submit{width:100px;background: #0066AA; color: #fff;font-weight:700;margin:10px 5px; padding: 10px 5px; }
+	form .submit:focus,form .action-button:hover{box-shadow:0 0 0 2px #fff,0 0 0 3px #0066AA;}
+	.status{font-size:13px;color:#999;margin-bottom: 20px; display: block;}
+	.hidden{display: none !important;}
+  </style>
+</head>
+<body>
+  <div>
+	<form id="credentialsForm" method="post" action="/setwifi" target="formFrame">
+		<fieldset>
+			<legend>Настройки сети</legend>
+			<input name="wifi_ssid" placeholder="WiFi SSID" id="wifi_ssid" autocorrect="off" autocapitalize="none" required>
+			<select id="aplist" disabled class="hidden">
+				<option>Scanning for networks...</option>
+			</select>
+			<input name="wifi_password" placeholder="WiFi Password" type="text" required>
+		</fieldset>
+
+		<span class="status hidden">Status: <span id="status">Updating...</span></span>
+
+		<fieldset>
+			<legend>Настройки MQTT</legend>
+			<input name="mqtt_broker_ip" placeholder="Mqtt broker ip" type="text" required >
+			<input name="mqtt_broker_port" placeholder="Mqtt broker port" type="number" value="1883" required>
+			<input name="mqtt_login" placeholder="Mqtt login" type="text" required >
+			<input name="mqtt_password" placeholder="Mqtt password" type="text" required >
+			<input name="mqtt_client_id" placeholder="Mqtt client id" type="text" required >
+			<input name="mqtt_topic" placeholder="Mqtt topic" type="text" required >
+		</fieldset>
+		<button type="submit" class="action-button submit">Сохранить</button>
+		
+	  <pre id="dbg"></pre>
+	</form>
+  </div>
+  <script>
+	
+	function get_status(){
+		fetch('/status', {method: 'GET', cache: 'no-cache'})
+			.then((response) => {
+				return response.text();
+			})
+			.then((text) => {
+				let status = document.getElementById('status');
+				status.innerHTML = text;
+			});
+	}
+	function get_applist()
+	{
+		fetch('/aplist', {method: 'GET', cache: 'no-cache'})
+			.then((response) => {
+				return response.json();
+			})
+			.then((data) => {
+				//console.log(data);
+				//document.getElementById('dbg').innerText = data;
+				data.sort(function(a, b){ return b.rssi - a.rssi; });
+				let ssids = data.map(function(a) { return a.ssid; }).filter(function(item, pos, self) { return self.indexOf(item)==pos; });
+				let sel = document.getElementById('aplist');
+				sel.removeAttribute('disabled');
+				sel.innerHTML = '<option value="">Выберите сеть</option>';
+				for (var i = 0; i < ssids.length; ++i)
+				{
+					let o = document.createElement('option');
+					o.innerHTML = ssids[i];
+					o.value = ssids[i];
+					sel.options.add(o);
+				}
+				sel.classList.remove('hidden');
+			});
+	}
+	document.addEventListener("DOMContentLoaded", function() {
+		//Выбор из доступных сетей
+		document.getElementById("aplist").addEventListener('change', function(){
+			document.getElementById("wifi_ssid").value = this.value;
+		})
+		//Сохранение
+		document.getElementById("credentialsForm").addEventListener("submit", function(e){
+			e.preventDefault()
+			//Атозаполнение полей
+			this.querySelectorAll('input[data-default]').forEach(item=>{
+				if (item.value == '')
+				{
+					item.value = item.getAttribute('data-default')
+				}
+			})
+			let formData = new FormData(document.getElementById("credentialsForm"));
+			
+			fetch('/setwifi', {
+				method: 'POST',
+				body: new URLSearchParams(formData)
+			})
+			.then((response) => {
+				return response.json();
+			})
+			.then((data) => {
+				let status = document.getElementById('dbg');
+				status.innerHTML = JSON.stringify(response);
+			})
+
+			//Показываем статус.
+			document.querySelector('.status.hidden').classList.remove('hidden');
+		});
+
+		//Обновление списка сетей раз в 5 секунд
+		get_applist();
+		setInterval(get_applist, 5000);
+		//Раз в секунду запрос статуса
+		setInterval(get_status, 1000);
+	});
+</script>
+</body>
+</html>
